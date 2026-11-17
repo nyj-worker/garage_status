@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="origin" />
+  <title>남양주시 화물차고지 현장점검 스마트 맵 대시보드</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- SheetJS (XLSX Upload & Export) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Pretendard Font -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+  <!-- 분리된 스타일시트 -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="antialiased">
+
+  <!-- Top Navigation Header -->
+  <header class="bg-slate-900 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-lg shadow-inner">
+          🚛
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-semibold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">남양주시 자동차관리과 화물팀</span>
+            <span class="text-xs text-slate-400">데이터 기준일: 2026.11.16.</span>
+          </div>
+          <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white mt-0.5">
+            화물차고지 현장점검 스마트 맵 대시보드
+          </h1>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="locateInspector()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium border border-slate-700 transition">
+          <span>📍</span> 내 위치(GPS)
+        </button>
+        <label class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-medium cursor-pointer shadow-sm transition">
+          <span>📂</span> 관리대장 엑셀 업로드
+          <input type="file" id="excelUploadInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleExcelUpload(event)" />
+        </label>
+        <button onclick="exportInspectionExcel()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-medium shadow-sm transition">
+          <span>📥</span> 점검결과 엑셀 다운로드
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-[1440px] mx-auto px-4 sm:px-6 py-5 space-y-5">
+
+    <!-- KPI Summary Cards (Bento Grid) -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- KPI 1 -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">전체 차고지 확보 현황</span>
+          <span class="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-sm font-bold">📊</span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="kpiTotal">1,552대</span>
+          <span class="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">관내 1,499 / 관외 53</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">관내 등록 차량의 관내 차고지 확보율 <strong class="text-slate-700">50.2%</strong></p>
+      </div>
+
+      <!-- KPI 2 -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-rose-200/80 flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-rose-600 uppercase tracking-wider">2등급: 관내 나대지 (사각지대)</span>
+          <span class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center text-sm font-bold">⚠️</span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl sm:text-3xl font-extrabold text-rose-600">557대</span>
+          <span class="text-xs font-semibold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">관내 차고지의 69.2%</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">15개 읍면동 분산 (화도 106 · 진건 75 · 진접 74 · 양정 66)</p>
+      </div>
+
+      <!-- KPI 3 -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-amber-200/80 flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-amber-700 uppercase tracking-wider">1등급: 관외 원거리 차고지</span>
+          <span class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-sm font-bold">🛣️</span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl sm:text-3xl font-extrabold text-amber-600">747대</span>
+          <span class="text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">전체의 48.1%</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">포천(137)·여주(125)·충북(124)·연천(109)·충남(71) 집중</p>
+      </div>
+
+      <!-- KPI 4 -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-blue-200/80 flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-blue-700 uppercase tracking-wider">현장 점검 진행률 (관내 32개소)</span>
+          <span class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold">✅</span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl sm:text-3xl font-extrabold text-blue-600" id="kpiCheckedCount">0 / 32개소</span>
+          <span class="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full" id="kpiCheckedPct">0%</span>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-2 mt-2 overflow-hidden">
+          <div id="kpiProgressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Interactive Map & Inspection Workspace -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      
+      <!-- Left: Map Container (8 Cols) -->
+      <div class="lg:col-span-8 bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col gap-3">
+        <!-- Map Controls Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+          <!-- Mode Switcher -->
+          <div class="inline-flex rounded-xl bg-slate-100 p-1">
+            <button id="btnModeLocal" onclick="setMapMode('local')" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold bg-white text-blue-700 shadow-sm transition">
+              🏙️ 관내 집중점검 (남양주 32개소)
+            </button>
+            <button id="btnModeWide" onclick="setMapMode('wide')" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition">
+              🗺️ 관외 원거리 분포 (전국 22시군)
+            </button>
+          </div>
+
+          <!-- Category Filter Pills -->
+          <div class="flex flex-wrap items-center gap-1.5 text-xs" id="localFilterBar">
+            <button onclick="setFilter('all')" data-filter="all" class="filter-pill px-2.5 py-1.5 rounded-lg font-semibold bg-slate-800 text-white transition">전체 (805대)</button>
+            <button onclick="setFilter('vacant')" data-filter="vacant" class="filter-pill px-2.5 py-1.5 rounded-lg font-semibold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition">🔴 나대지 (557대)</button>
+            <button onclick="setFilter('official')" data-filter="official" class="filter-pill px-2.5 py-1.5 rounded-lg font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition">🔵 일반주차장 (248대)</button>
+            <button onclick="setFilter('outside_occ')" data-filter="outside_occ" class="filter-pill px-2.5 py-1.5 rounded-lg font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition">🟠 관외차량 점유 (53대)</button>
+          </div>
+        </div>
+
+        <!-- Leaflet Map -->
+        <div class="relative w-full">
+          <div id="map"></div>
+          <!-- Map Legend Overlay -->
+          <div class="absolute bottom-3 left-3 z-20 bg-white/95 backdrop-blur-sm px-3 py-2.5 rounded-xl shadow-md border border-slate-200 text-xs space-y-1.5">
+            <div class="font-bold text-slate-800 border-b border-slate-100 pb-1">범례 (원 크기 = 등록대수 비례)</div>
+            <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-rose-500 inline-block border border-white shadow"></span> <span>관내 나대지 차고지 (2등급 우선점검)</span></div>
+            <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-blue-600 inline-block border border-white shadow"></span> <span>관내 일반 주차장 (17개소)</span></div>
+            <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block border border-white shadow"></span> <span>관외 원거리 차고지 (1등급 서류의심)</span></div>
+            <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block border border-white shadow"></span> <span>현장점검 완료 거점</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Field Inspection List & Action Drawer (4 Cols) -->
+      <div class="lg:col-span-4 bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col h-[665px]">
+        <div class="pb-3 border-b border-slate-100 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h2 class="text-base font-bold text-slate-900">📋 우선순위 현장점검 목록</h2>
+            <button onclick="resetAllInspections()" class="text-xs text-slate-400 hover:text-rose-600 underline">점검기록 초기화</button>
+          </div>
+          <!-- Search & Status Filter -->
+          <div class="flex gap-2">
+            <input type="text" id="searchInput" onkeyup="renderSiteList()" placeholder="읍면동, 주차장명, 지번 검색..." class="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <select id="statusFilter" onchange="renderSiteList()" class="px-2.5 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 font-medium text-slate-700">
+              <option value="all">전체상태</option>
+              <option value="미점검">미점검</option>
+              <option value="정상주차">정상주차</option>
+              <option value="부재의심">부재의심</option>
+              <option value="적발계도">적발·계도</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Scrollable Cards -->
+        <div id="siteListContainer" class="flex-1 overflow-y-auto custom-scrollbar divide-y divide-slate-100 pr-1 mt-1">
+          <!-- Populated by app.js -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom Section: Charts & Custom Excel Upload Risk Grader -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <!-- Chart 1: Local Garages Breakdown -->
+      <div class="lg:col-span-6 bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-slate-900">관내 차고지 상위 10개 거점 현황 (총 805대)</h3>
+            <p class="text-xs text-slate-500">나대지(읍면동) 및 주요 일반주차장별 관내·관외 등록 차량 구성</p>
+          </div>
+          <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700">나대지 비중 69.2%</span>
+        </div>
+        <div class="h-64">
+          <canvas id="localChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Chart 2: Out-of-jurisdiction Breakdown -->
+      <div class="lg:col-span-6 bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-slate-900">관외 원거리 차고지 상위 10개 시·군 (총 747대)</h3>
+            <p class="text-xs text-slate-500">일일 입출차 불가 원거리 등록 집중 지역 (개인화물 vs 일반화물)</p>
+          </div>
+          <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800">상위 5곳 75.8%</span>
+        </div>
+        <div class="h-64">
+          <canvas id="outsideChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dynamic Excel Upload Analysis Panel (Hidden until user uploads an Excel file) -->
+    <section id="uploadedExcelSection" class="hidden bg-white rounded-2xl p-5 shadow-sm border-2 border-emerald-500/40 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        <div>
+          <span class="text-xs font-bold px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800">실무 관리대장 연동 모드</span>
+          <h3 class="text-base sm:text-lg font-bold text-slate-900 mt-1" id="uploadedFileName">업로드된 관리대장 고위험군 자동 판별 결과</h3>
+          <p class="text-xs text-slate-500">업로드하신 개별 차량 데이터를 위험 점수 알고리즘(0순위~4등급)으로 자동 분류했습니다.</p>
+        </div>
+        <button onclick="downloadGradedVehiclesExcel()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold shadow-sm transition">
+          📥 등급분류 완료 대장 다운로드 (.xlsx)
+        </button>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3" id="uploadedStatsCards"></div>
+      <div class="overflow-x-auto max-h-80 custom-scrollbar border border-slate-200 rounded-xl">
+        <table class="min-w-full text-xs text-left">
+          <thead class="bg-slate-800 text-white sticky top-0" id="uploadedTableHead"></thead>
+          <tbody class="divide-y divide-slate-100" id="uploadedTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Inspection Modal for Detailed Field Input -->
+  <div id="inspectionModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <span id="modalBadge" class="text-xs font-bold px-2 py-0.5 rounded"></span>
+          <h3 id="modalTitle" class="text-lg font-bold text-slate-900 mt-1"></h3>
+          <p id="modalSubtitle" class="text-xs text-slate-500"></p>
+        </div>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-3 grid grid-cols-3 gap-2 text-center border border-slate-100">
+        <div>
+          <div class="text-[11px] text-slate-500">총 등록대수</div>
+          <div id="modalTotal" class="text-base font-extrabold text-slate-900"></div>
+        </div>
+        <div>
+          <div class="text-[11px] text-slate-500">관내 차량</div>
+          <div id="modalIn" class="text-base font-extrabold text-blue-600"></div>
+        </div>
+        <div>
+          <div class="text-[11px] text-slate-500">관외 차량</div>
+          <div id="modalOut" class="text-base font-extrabold text-amber-600"></div>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">현장 점검 판정 결과</label>
+          <select id="modalStatus" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500">
+            <option value="미점검">⬜ 미점검 (점검 예정)</option>
+            <option value="정상주차">✅ 정상주차 확인 (실주차 양호)</option>
+            <option value="부재의심">⚠️ 공차·부재 의심 (밤샘주차 대조 필요)</option>
+            <option value="적발계도">🚨 불법 밤샘주차 적발 / 행정계도 대상</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">현장 실제 확인 차량 수 (대)</label>
+          <input type="number" id="modalObservedCount" min="0" placeholder="예: 12" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">현장 특이사항 / 단속 메모</label>
+          <textarea id="modalMemo" rows="3" placeholder="예: 야간 01:20 순찰 결과 나대지 내 3대만 주차됨. 나머지 차량 인근 도로변 밤샘주차 단속 연계 필요." class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500"></textarea>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeModal()" class="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100">취소</button>
+        <button onclick="saveInspection()" class="px-4 py-2 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-sm">점검 결과 저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 분리된 자바스크립트 -->
+  <script src="app.js"></script>
+</body>
+</html>
